@@ -261,52 +261,53 @@ def clip_cross_entropy(preds, targets, reduction='none'):
  
 def training_fun(args):
 
-    device = torch.device("cuda:0")  # cuda:0
+    device = torch.device("cuda:0")  # 
     input_sequence_length = 240
     output_sequence_length = 30
     input_size = 20484
     hidden_size = 1024
-    num_layers = 1
+    num_layers = 3
 
-    print("Initializing Model")
+    print("Initialize model")
     
     # model = LSTMAutoencoder(input_size, hidden_size, output_sequence_length, num_layers).cuda() 
     # model = model().cuda() 
     model = DualLSTMAutoencoder(input_size, hidden_size, num_layers, device)
     
-    print("Model Initialized")
+    print("Model initialized")
 	
     model.to(device) 
 
-    print("Model On Device")
+    print("Model sent to device")
 
     # model = DataParallel(model, device_ids=[0, 1]) 
-    optimizer = Adam(model.parameters(), lr=args.lr)
+    # optimizer = Adam(model.parameters(), lr=args.lr)
+    optimizer = Adam(model.parameters(), lr=0.001)  
     result_list = []
 
     meg_dir = '/gpfs/gibbs/pi/krishnaswamy_smita/fmri-meg/meg/samples_240/train/'
     fmri_dir = '/gpfs/gibbs/pi/krishnaswamy_smita/fmri-meg/fmri/samples_30/train/'
 
     dataloader = DataLoader(NumpyDataset(meg_dir = meg_dir, fmri_dir = fmri_dir), 
-                        batch_size=args.batch_size, 
-                        num_workers=args.num_workers, 
+                        batch_size=30, 
+                        num_workers=12, 
                         shuffle=False)
     
-    print("Dataloader Initialized")
+    print("Dataloader Done!")
 
     loss_function = nn.MSELoss()
     
-    for epoch in range(1, args.n_epochs + 1):
-
+    for epoch in range(1, args.n_epochs + 1): 
+        data_embeddings = {}
         model.train() 
         tlf, tlm, tlpn  = Averager(), Averager(), Averager()  
         
-        for i, (xm, xf, y) in enumerate(tqdm(dataloader)):   
+        for i, (xm, xf, time, subj) in enumerate(tqdm(dataloader)):   
             
             xf, xm = xf.squeeze(1).float().to(device), xm.float().squeeze(1).to(device)
 
             [loss_pn, loss_f, loss_m], acc_pn, [xm_hat, xf_hat], [zm_enc, zf_enc] = model(xm, xf)  
-            loss = (loss_f + loss_m) # + acc_pn
+            loss = (loss_f + loss_m) # + loss_pn
 
             # loss = loss_function(xf_hat, xf) 
             optimizer.zero_grad()
@@ -314,15 +315,19 @@ def training_fun(args):
             optimizer.step()
             tlf.add(loss_f.item()) 
             tlm.add(loss_m.item()) 
-            tlpn.add(loss_pn.item()) 
-  
-        prt_text =  '     ep.%d       l: %4.2f/%4.2f/ %4.2f || ' 
-        print(prt_text % (epoch,  tlpn.item()*100, tlf.item()*100, tlm.item()*100)) 
-        
-        result_list.append(prt_text % (epoch,  tlpn.item()*100, tlf.item()*100, tlm.item()*100)) 
-        save_list_to_txt('./mar23-1344-farnam', result_list)
-        tlf, tlm, tlpn  = Averager(), Averager(), Averager()    
+            tlpn.add(loss_pn) 
 
+            if epoch%1==0:
+                data_embeddings[subj] = [time, zm_enc.detach().cpu().numpy(), zf_enc.detach().cpu().numpy()]
+ 
+        prt_text =  '     ep.%d       l(f/m): %4.2f/ %4.2f || ' 
+        print(prt_text % (epoch,   tlf.item()*100, tlm.item()*100)) 
+        
+        result_list.append(prt_text % (epoch,   tlf.item()*100, tlm.item()*100)) 
+        save_list_to_txt('./mar23-1344-farnam', result_list)
+        tlf, tlm, tlpn  = Averager(), Averager(), Averager()   
+        if epoch%1==0:
+            np.save(f'./results/data_embeddings_{epoch}.npy', data_embeddings) 
 
 # def criterion_scoring_fun(args):  
 #     if args.criterion == 'CrossEntropyLoss':
@@ -349,6 +354,7 @@ def training_fun(args):
 #     acc = torch.eq(psi_hat_sig, psi_true_bin).float().mean()
 #     return psi_loss, acc.item() 
 
+ 
 
 if __name__ == "__main__":
 
@@ -369,8 +375,7 @@ if __name__ == "__main__":
     parser.add_argument("--nhead", default=4, type=int)
     parser.add_argument("--probs", default=0.2, type=float)
 
-    parser.add_argument("--batch_size", default=20, type=int)
-    parser.add_argument("--num_workers", default=12, type=int)
+    parser.add_argument("--batch_size", default=5, type=int)
     parser.add_argument("--log_dir", default=None, type=str)
     parser.add_argument("--project_name", default="splicenn-get-valid", type=str)
 
