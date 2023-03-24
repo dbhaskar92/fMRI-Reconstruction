@@ -23,16 +23,15 @@ class NumpyDataset(Dataset):
     
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
-            idx = idx.tolist()
-        
+            idx = idx.tolist() 
         meg_npy_path = self.npy_files[idx]
         meg_sample = np.load(meg_npy_path)
         label = int(meg_npy_path[-7:-4])
+        subj = meg_npy_path.split(os.sep)[-2]
 
         rand_fmri_sub = str(np.random.choice(self.fmri_subs, 1, replace=False).tolist()[0]) 
-        fmri_sample = np.load(os.path.join(self.fmri_dir, rand_fmri_sub, (rand_fmri_sub+meg_npy_path[-12:]))) 
- 
-        return meg_sample, fmri_sample, label #, meg_npy_path[-22:]
+        fmri_sample = np.load(os.path.join(self.fmri_dir, rand_fmri_sub, (rand_fmri_sub+meg_npy_path[-12:])))  
+        return meg_sample, fmri_sample, label, subj
 
  
  
@@ -104,59 +103,7 @@ class NumpyMetaDataset(Dataset):
  
 
  
- 
+# meg_dir = '/gpfs/gibbs/pi/krishnaswamy_smita/fmri-meg/meg/samples_240/train/'
+# fmri_dir = '/gpfs/gibbs/pi/krishnaswamy_smita/fmri-meg/fmri/samples_30/train/'
 
- 
-# train_dataloader = DataLoader(dataset = NumpyDataset(meg_dir = '/home/aa2793/scratch60/datasets/fmri-meg/meg/samples_240/train/',
-#                         fmri_dir = '/home/aa2793/scratch60/datasets/fmri-meg/fmri/samples_30/train/'),
-#                         batch_size=batch_size, num_workers=num_workers, shuffle=True)
-
-
-# batch_size = 100
-# num_workers = 4
-# meg_dir = '/home/aa2793/scratch60/datasets/fmri-meg/meg/samples_240/train/'
-# fmri_dir = '/home/aa2793/scratch60/datasets/fmri-meg/fmri/samples_30/train/' 
-# dataloader = DataLoader(NumpyDataset(meg_dir = meg_dir, fmri_dir = fmri_dir), 
-#                     batch_size=batch_size, 
-#                     num_workers=num_workers, 
-#                     shuffle=True)
-
-# for (xm, xf, y) in dataloader:
-#     print(xm.shape, xf.shape)
-
-
-# datase = NumpyMetaDataset(meg_dir = meg_dir, fmri_dir = fmri_dir, n_way = 30, batch_size = batch_size, shuffle=True)
-
-# test_dataloader = DataLoader(dataset = NumpyDataset(meg_dir = '/home/aa2793/scratch60/datasets/fmri-meg/meg/samples_240/test/',
-#                         fmri_dir = '/home/aa2793/scratch60/datasets/fmri-meg/fmri/samples_30/test/'),
-#                         batch_size=batch_size, num_workers=num_workers, shuffle=True)
-                        
-
-# for (xm, xf, y, _) in train_dataloader: 
-#     print(y, _)
-
-
-# for (xm, xf, y, _) in test: 
-#     print(y, _)
-
-
-# batch_size = 1
-# num_workers = 4
-
-# for i in range(100):
-#     metadataset = NumpyMetaDataset(meg_dir = '/home/aa2793/scratch60/datasets/fmri-meg/meg/samples_240/train/',
-#                                    fmri_dir = '/home/aa2793/scratch60/datasets/fmri-meg/fmri/samples_30/train/',
-#                                    n_way = 106, batch_size = batch_size)
-#     dataloader = DataLoader(metadataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
-
-#     for (xm, xf, y1, y2) in dataloader:
-#         import pdb;pdb.set_trace()
-#         xm, xf, y = torch.stack(xm, dim=1).squeeze(2), torch.stack(xf, dim=1).squeeze(2), torch.stack(y, dim=1)
-        
-#         print(y) 
-#         break
-
-
-
-
- 
+# NumpyDataset(meg_dir = meg_dir, fmri_dir = fmri_dir)
