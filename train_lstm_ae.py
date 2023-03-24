@@ -261,39 +261,38 @@ def clip_cross_entropy(preds, targets, reduction='none'):
  
 def training_fun(args):
 
-    device = torch.device("cpu")  # cuda:0
+    device = torch.device("cuda:0")  # cuda:0
     input_sequence_length = 240
     output_sequence_length = 30
     input_size = 20484
     hidden_size = 1024
     num_layers = 1
 
-    print("Initialize model")
+    print("Initializing Model")
     
     # model = LSTMAutoencoder(input_size, hidden_size, output_sequence_length, num_layers).cuda() 
     # model = model().cuda() 
     model = DualLSTMAutoencoder(input_size, hidden_size, num_layers, device)
     
-    print("Model initialized")
+    print("Model Initialized")
 	
     model.to(device) 
 
-    print("Model sent to device")
+    print("Model On Device")
 
     # model = DataParallel(model, device_ids=[0, 1]) 
-    # optimizer = Adam(model.parameters(), lr=args.lr)
-    optimizer = Adam(model.parameters(), lr=0.001)  
+    optimizer = Adam(model.parameters(), lr=args.lr)
     result_list = []
 
-    meg_dir = '/home/db2454/scratch60/datasets/fmri-meg/meg/samples_240/train/'
-    fmri_dir = '/home/db2454/scratch60/datasets/fmri-meg/fmri/samples_30/train/'
+    meg_dir = '/gpfs/gibbs/pi/krishnaswamy_smita/fmri-meg/meg/samples_240/train/'
+    fmri_dir = '/gpfs/gibbs/pi/krishnaswamy_smita/fmri-meg/fmri/samples_30/train/'
 
     dataloader = DataLoader(NumpyDataset(meg_dir = meg_dir, fmri_dir = fmri_dir), 
-                        batch_size=5, 
-                        num_workers=8, 
+                        batch_size=args.batch_size, 
+                        num_workers=args.num_workers, 
                         shuffle=False)
     
-    print("Dataloader Done!")
+    print("Dataloader Initialized")
 
     loss_function = nn.MSELoss()
     
@@ -324,6 +323,7 @@ def training_fun(args):
         save_list_to_txt('./mar23-1344-farnam', result_list)
         tlf, tlm, tlpn  = Averager(), Averager(), Averager()    
 
+
 # def criterion_scoring_fun(args):  
 #     if args.criterion == 'CrossEntropyLoss':
 #         criterion_fun = torch.nn.CrossEntropyLoss() 
@@ -349,7 +349,6 @@ def training_fun(args):
 #     acc = torch.eq(psi_hat_sig, psi_true_bin).float().mean()
 #     return psi_loss, acc.item() 
 
- 
 
 if __name__ == "__main__":
 
@@ -370,7 +369,8 @@ if __name__ == "__main__":
     parser.add_argument("--nhead", default=4, type=int)
     parser.add_argument("--probs", default=0.2, type=float)
 
-    parser.add_argument("--batch_size", default=5, type=int)
+    parser.add_argument("--batch_size", default=20, type=int)
+    parser.add_argument("--num_workers", default=12, type=int)
     parser.add_argument("--log_dir", default=None, type=str)
     parser.add_argument("--project_name", default="splicenn-get-valid", type=str)
 
