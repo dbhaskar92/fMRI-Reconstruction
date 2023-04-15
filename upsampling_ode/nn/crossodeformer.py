@@ -24,29 +24,9 @@ def pairwise_distances(x, y):
     ).pow(2).sum(dim=2)
     return distances
 
-
-# def normalize_input(x, range_type='[-1,1]'):  
- 
-#     if range_type == '[0,1]':
-#         # Normalize the tensor to the range [0, 1]
-#         x_min = torch.min(x)
-#         x_max = torch.max(x)
-#         x_norm = (x - x_min) / (x_max - x_min)
-#     elif range_type == '[-1,1]':
-#         # Normalize the tensor to the range [-1, 1]
-#         x_min = torch.min(x)
-#         x_max = torch.max(x)
-#         x_norm = ((x - x_min) / (x_max - x_min)) * 2 - 1
-#     else:
-#         raise ValueError("Invalid range type. Valid options are '[0,1]' or '[-1,1]'.")
-
-#     return x_norm
-
-
 # helpers
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
-
 
 # classes
 class PreNorm(nn.Module):
@@ -175,33 +155,28 @@ class Spatio1DConv(nn.Module):
 
 
 class Spatio1DConvSig(nn.Module):
-    def __init__(self, input_dim, kernel_list, krenel_size):
+    def __init__(self, input_dim, kernel_list, kernel_size):
         super().__init__()
 
         self.layers = nn.Sequential(   
             nn.Linear(input_dim, kernel_list[3]),
             nn.Tanh()
             # Rearrange('b c d -> b d c'),  
-            # nn.Conv1d(input_dim, kernel_list[0], krenel_size, stride=1, padding=1),
+            # nn.Conv1d(input_dim, kernel_list[0], kernel_size, stride=1, padding=1),
             # nn.BatchNorm1d(kernel_list[0]),
             # nn.ReLU(True), 
-            # nn.Conv1d(kernel_list[0], kernel_list[1], krenel_size, stride=1, padding=1),
+            # nn.Conv1d(kernel_list[0], kernel_list[1], kernel_size, stride=1, padding=1),
             # nn.BatchNorm1d(kernel_list[1]),
             # nn.ReLU(True),  
-            # nn.Conv1d(kernel_list[1], kernel_list[2], krenel_size, stride=1, padding=1),
+            # nn.Conv1d(kernel_list[1], kernel_list[2], kernel_size, stride=1, padding=1),
             # nn.BatchNorm1d(kernel_list[2]),
             # nn.ReLU(True),  
-            # nn.Conv1d(kernel_list[2], kernel_list[3], krenel_size, stride=1, padding=1),
+            # nn.Conv1d(kernel_list[2], kernel_list[3], kernel_size, stride=1, padding=1),
             # nn.Sigmoid(), 
             # Rearrange('b d c -> b c d')
         ) 
     def forward(self, x):
         return self.layers(x)
-
-
-
- 
-
 
 
 class CrossFormer(nn.Module):
@@ -228,21 +203,9 @@ class CrossFormer(nn.Module):
             'atol': 1e-4, 
             'device': device, 
         } 
-        self.fmri2mri_encoder = UpSample(param)
-        # param['obs_points'] = self.meg_seq_length
-        # param['total_points'] = self.fmri_seq_length
-        # self.mri2fmri_encoder = Latent_ODE(param)
-        # self.fmri2mri_encoder = OneDConvTemporal(
-        #     self.fmri_seq_length, 
-        #     kernel_list = [64, 128, 256, 240], 
-        #     krenel_size=3
-        # ) 
 
-        self.mri2fmri_encoder = OneDConvTemporal(
-            self.meg_seq_length, 
-            kernel_list = [256, 128, 64, 30], 
-            krenel_size=3
-        )  
+        self.fmri2mri_encoder = UpSample(param)
+        self.mri2fmri_encoder = DownSample(param)
  
         self.shared_transformer = Transformer(
             input_dim, 
@@ -257,7 +220,7 @@ class CrossFormer(nn.Module):
         self.spatio_decoder = Spatio1DConvSig(
             input_dim = dim, 
             kernel_list = [2048, 2048*2, 2048*3, input_dim],  
-            krenel_size = 3
+            kernel_size = 3
         )    
         
         self.dropout = nn.Dropout(emb_dropout)  
@@ -277,7 +240,6 @@ class CrossFormer(nn.Module):
 
 
     def alignment_loss(self, support, querry):   
-
         b, c, d = querry.shape  
         y = torch.tensor([x for x in range(b)]).to(self.device)   
         # y = Variable(y.repeat(c))  
@@ -305,11 +267,9 @@ class CrossFormer(nn.Module):
         zf_sp = self.spatio_encoder(xf)             # [b, T_f, D] --> [b, T_f, d], where d << D       
 
         # cross convolution meg <--> fmri 
-        zm = self.fmri2mri_encoder(zf_sp)           # [b, T_f, d] --> [b, T_m, d], where T_f > T_m
-        # import pdb;pdb.set_trace() 
-        zf = self.mri2fmri_encoder(zm_sp)           # [b, T_m, d] --> [b, T_f, d], where T_m < T_f
+        (zf_hidden, zf_hidden_interped, zm) = self.fmri2mri_encoder(zf_sp)     # [b, T_f, d] --> [b, T_m, d], where T_f > T_m
+        (zm_hidden, zf) = self.mri2fmri_encoder(zm_sp)    # [b, T_m, d] --> [b, T_f, d], where T_m < T_f
         
-
         # alignment loss
         loss_af, acc_af = self.alignment_loss(zf, zf_sp)
         loss_am, acc_am = self.alignment_loss(zm, zm_sp)
@@ -332,14 +292,30 @@ class CrossFormer(nn.Module):
         return [loss_a*0.5, loss_m*0.8, loss_f*0.8], acc_a, [xm, xf, zf, zm, zf_tf, zm_tf, xm_hat, xf_hat] 
 
 
-
-
-		
-
 class OR_ODE_Func(nn.Module):
 	
 	def __init__(self, param):
 		super(OR_ODE_Func, self).__init__()
+		self.param = param
+		self.hidden_layer = nn.Linear(self.param['LO_hidden_size'], self.param['OF_layer_dim'])
+		self.tanh = nn.Tanh()
+		self.hidden_layer2 = nn.Linear(self.param['OF_layer_dim'], self.param['OF_layer_dim'])
+		self.tanh2 = nn.Tanh()
+		self.output_layer = nn.Linear(self.param['OF_layer_dim'], self.param['LO_hidden_size'])
+		
+	def forward(self, t, input):
+		x = input
+		x = self.hidden_layer(x)
+		x = self.tanh(x)
+		x = self.hidden_layer2(x)
+		x = self.tanh2(x)
+		x = self.output_layer(x)	
+		return x
+
+class Regressor(nn.Module):
+	
+	def __init__(self, param):
+		super(Regressor, self).__init__()
 		self.param = param
 		self.hidden_layer = nn.Linear(self.param['LO_hidden_size'], self.param['OF_layer_dim'])
 		self.tanh = nn.Tanh()
@@ -381,7 +357,7 @@ class UpSample(nn.Module):
         self.input_seq_len = 30
         self.output_seq_len = 240
         self.sampling_rate = 1/8
-        # self.integration_range = Variable(torch.arange(0.0, 1+sampling_rate, sampling_rate)).to(self.param['device']) 
+        
         self.h0 = torch.zeros(self.param['gru_n_layers'], self.param['LO_hidden_size'], device = self.param['device'])
  
 
@@ -394,19 +370,19 @@ class UpSample(nn.Module):
             
             if first_time:
                 first_time = False
-                gru_cellstate = gru_cellstate_t.unsqueeze(1)
+                encoder_hidden_states = gru_cellstate_t.unsqueeze(1)
             else:
-                gru_cellstate = torch.cat((gru_cellstate, gru_cellstate_t.unsqueeze(1)), dim = 1)
+                 encoder_hidden_states = torch.cat((encoder_hidden_states, gru_cellstate_t.unsqueeze(1)), dim = 1)
 
-        assert gru_cellstate.shape[1] == self.input_seq_len
+        assert  encoder_hidden_states.shape[1] == self.input_seq_len
 
         # interpolate with neural-ode
         first_time = True
         for t in range(self.input_seq_len): 
             if t == (self.input_seq_len-1):
-                bv1, bv2 = gru_cellstate[:, t, :], 0.0
+                bv1, bv2 = encoder_hidden_states[:, t, :], 0.0
             else:
-                bv1, bv2 = gru_cellstate[:, t, :], gru_cellstate[:, t+1, :] 
+                bv1, bv2 = encoder_hidden_states[:, t, :], encoder_hidden_states[:, t+1, :] 
             h_interp_t = odeint(
                 self.ode_func,  
                 bv1,            # initial value for the ode problem
@@ -419,11 +395,11 @@ class UpSample(nn.Module):
              
             if first_time:
                 first_time = False
-                h_interp_reparam = h_interp_reparam_t 
+                interped_hidden_states = h_interp_reparam_t 
             else:
-                h_interp_reparam = torch.cat((h_interp_reparam, h_interp_reparam_t), dim = 0)
+                interped_hidden_states = torch.cat((interped_hidden_states, h_interp_reparam_t), dim = 0)
 
-        assert h_interp_reparam.shape[0] == self.output_seq_len
+        assert interped_hidden_states.shape[0] == self.output_seq_len
         
         # decode the output sequence
         gru_cellstate_t, first_time = self.h0, True 
@@ -432,10 +408,67 @@ class UpSample(nn.Module):
 
             if first_time:
                 first_time = False
-                gru_y = gru_y_t.unsqueeze(1)
+                interped_seq = gru_y_t.unsqueeze(1)
             else:
-                gru_y = torch.cat((gru_y, gru_y_t.unsqueeze(1)), dim = 1)
+                interped_seq = torch.cat((interped_seq, gru_y_t.unsqueeze(1)), dim = 1)
      
-        return gru_y
+        return (encoder_hidden_states, interped_hidden_states, interped_seq)
 
+
+class DownSample(nn.Module):
+	
+    def __init__(self, param):
+        super(DownSample, self).__init__()
+        
+        self.param = param
+        self.reg = Regressor(param)
+        
+        self.encoder_gru = torch.nn.GRU(
+            input_size = self.param['d'],
+            hidden_size = self.param['LO_hidden_size'], 
+            num_layers = self.param['gru_n_layers'], 
+            batch_first = True
+        )
+        
+        self.decoder_gru = torch.nn.GRU(
+            input_size = self.param['d'],
+            hidden_size = self.param['LO_hidden_size'], 
+            num_layers = self.param['gru_n_layers'], 
+            batch_first = True
+        )
+
+        self.input_seq_len = 240
+        self.output_seq_len = 30
+        self.sampling_rate = 1/8
+
+        self.h0 = torch.zeros(self.param['gru_n_layers'], self.param['LO_hidden_size'], device = self.param['device'])
+ 
+
+    def forward(self, x):  
+
+        # encode the input sequence 
+        gru_cellstate_t, first_time = self.h0, True 
+        for t in range(self.input_seq_len):
+            gru_x, gru_cellstate_t = self.encoder_gru(x[:, t, :], gru_cellstate_t)
+            
+            if first_time:
+                first_time = False
+                encoder_hidden_states = gru_cellstate_t.unsqueeze(1)
+            else:
+                 encoder_hidden_states = torch.cat((encoder_hidden_states, gru_cellstate_t.unsqueeze(1)), dim = 1)
+
+        assert  encoder_hidden_states.shape[1] == self.input_seq_len
+        
+        # decode the output sequence
+        gru_cellstate_t, first_time = self.h0, True 
+        for t in range(self.output_seq_len): 
+            gru_y_t, gru_cellstate_t = self.decoder_gru(x[:, int(t*(1.0/self.sampling_rate)), :], gru_cellstate_t)
+
+            if first_time:
+                first_time = False
+                interped_seq = gru_y_t.unsqueeze(1)
+            else:
+                interped_seq = torch.cat((interped_seq, gru_y_t.unsqueeze(1)), dim = 1)
+     
+        return (encoder_hidden_states, interped_seq)
  
