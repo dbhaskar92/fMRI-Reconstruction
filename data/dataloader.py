@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.autograd import Variable
 
+
 class NumpyDataset(Dataset):
     def __init__(self, meg_dir, fmri_dir): 
         
@@ -52,8 +53,7 @@ class NumpyMetaDataset(Dataset):
  
         rand_meg_sub = str(np.random.choice(self.meg_subs, 1, replace=False).tolist()[0]) 
         rand_fmri_sub = str(np.random.choice(self.fmri_subs, 1, replace=False).tolist()[0]) 
-
-        # print(rand_meg_sub, rand_fmri_sub)
+ 
         return rand_meg_sub, rand_fmri_sub
 
     def rand_time(self):
@@ -66,9 +66,8 @@ class NumpyMetaDataset(Dataset):
         n_folders_m = self.n_folders(os.path.join(self.meg_dir, rand_meg_sub)+'/')
         n_folders_f = self.n_folders(os.path.join(self.fmri_dir, rand_fmri_sub)+'/') 
         n_time = min(n_folders_m, n_folders_f) 
-        self.n_time_pints(n_time= n_time) 
- 
-        # import pdb;pdb.set_trace()
+        self.n_time_pints(n_time= n_time)  
+
         rand_time_points = self.rand_time()
         
         meg_sample = [np.load(os.path.join(self.meg_dir, rand_meg_sub, (rand_meg_sub+'-min-'+rand_t+'.npy'))) 
@@ -80,7 +79,7 @@ class NumpyMetaDataset(Dataset):
         y_batch = list(map(int, rand_time_points))
         y_meta = self.label
 
-        return meg_sample, fmri_sample, y_batch, y_meta
+        return (meg_sample, fmri_sample, y_meta, y_batch), [rand_time_points, rand_fmri_sub, rand_meg_sub] 
 
 
     def n_time_pints(self, n_time):    
@@ -101,9 +100,4 @@ class NumpyMetaDataset(Dataset):
     def __len__(self):
         return self.batch_size
  
-
  
-# meg_dir = '/gpfs/gibbs/pi/krishnaswamy_smita/fmri-meg/meg/samples_240/train/'
-# fmri_dir = '/gpfs/gibbs/pi/krishnaswamy_smita/fmri-meg/fmri/samples_30/train/'
-
-# NumpyDataset(meg_dir = meg_dir, fmri_dir = fmri_dir)
