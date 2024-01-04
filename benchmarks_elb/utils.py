@@ -5,7 +5,7 @@ from scipy.stats import zscore
 MRI_subjects = [1,2,3,4,5,6,9,10,14,15,16,17,18,19,20]
 n_runs = 8
 n_parts_per_run = {8:7, 7:10, 6:7, 5:8, 4:9, 3:9, 2:9, 1:10}
-n_segs_per_run = {1:np.arange(16), 2:np.range(15), 3:np.arange(14), 
+n_segs_per_run = {1:np.arange(16), 2:np.arange(15), 3:np.arange(14), 
  4:np.arange(15), 5:np.arange(12), 6:np.arange(11),
  7: np.arange(16), 8:np.arange(12)}
 MEG_subjects = np.arange(2,12)
@@ -15,8 +15,9 @@ MEG_dir = os.path.join(root_dir, 'meg','trimmed_new')
 n_vertices = 20484
 seconds_per_run = [900, 872, 832, 870, 708, 614, 904, 670]
 sampling_hz = {'meg': 200, 'fmri': 0.5}
+subjects = {'meg':MEG_subjects, 'fmri':MRI_subjects}
 
-def _single_sub_meg(sub_id, run, part=None, z=True):
+def _single_sub_meg(sub_id, run, part=None, z=True, downsamp=0):
     if part == None:
         data=[]
         for p in range(1, n_parts_per_run[run]+1):
@@ -27,6 +28,7 @@ def _single_sub_meg(sub_id, run, part=None, z=True):
         data = np.nan_to_num(np.load(fn))
         if data.shape[1] != n_vertices//2: data = data.T
         if z: data = zscore(data, axis=0)
+        if downsamp != 0: data = data[::downsamp, :]
     return data
 
 def _single_sub_mri(sub_id, run, hemi=None, z=True):
